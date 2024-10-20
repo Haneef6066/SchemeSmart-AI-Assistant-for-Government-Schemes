@@ -3,11 +3,11 @@ import time
 import numpy as np
 import streamlit as st
 from faiss import IndexFlatL2
-from mistralai.client import MistralClient
-from mistralai.models.chat_completion import ChatMessage
+from mistralai import Mistral
 from pypdf import PdfReader
 
-st.set_page_config(page_title="YOJANA SAATHI", page_icon="flag.jpeg", layout="wide")
+# Streamlit page configuration
+st.set_page_config(page_title="SchemeSmart", page_icon="flag.jpeg", layout="wide")
 
 # Initialize session state attributes
 if "index" not in st.session_state:
@@ -19,6 +19,7 @@ if "messages" not in st.session_state:
 if "text" not in st.session_state:
     st.session_state.text = ""
 
+# Function to add messages to the chat
 def add_message(msg, agent="ai", stream=True, store=True, avatar=None):
     if stream and isinstance(msg, str):
         msg = stream_str(msg)
@@ -33,13 +34,18 @@ def add_message(msg, agent="ai", stream=True, store=True, avatar=None):
     if store:
         st.session_state.messages.append(dict(agent=agent, content=output, avatar=avatar))
 
+# Cache the client for reuse
 @st.cache_resource
 def get_client():
-    api_key = os.environ["MISTRAL_API_KEY"]
-    return MistralClient(api_key=api_key)
+    api_key = "ENTER THE KEY"
+    if not api_key:
+        st.error("The MISTRAL_API_KEY is not set. Please set it in the code.")
+        st.stop()
+    return Mistral(api_key=api_key)
 
-CLIENT: MistralClient = get_client()
+CLIENT: Mistral = get_client()
 
+# Prompt template for the Mistral model
 PROMPT = """
 An excerpt from a document is given below.
 
@@ -55,6 +61,7 @@ Query: {query}
 Answer:
 """
 
+# Function to generate a reply based on a query
 def reply(query: str, index: IndexFlatL2):
     embedding = embed(query)
     embedding = np.array([embedding])
@@ -63,12 +70,13 @@ def reply(query: str, index: IndexFlatL2):
     context = [st.session_state.chunks[i] for i in indexes.tolist()[0]]
 
     messages = [
-        ChatMessage(role="user", content=PROMPT.format(context=context, query=query))
+        {"role": "user", "content": PROMPT.format(context='\n'.join(context), query=query)}
     ]
-    response = CLIENT.chat_stream(model="mistral-tiny", messages=messages)
 
-    add_message(stream_response(response), agent="ai", avatar="logo2.png")
+    response = CLIENT.chat.complete(model="mistral-tiny", messages=messages)
+    add_message(response.choices[0].message.content, agent="ai", avatar="logo2.png")
 
+# Function to build an index from a PDF file
 def build_index(pdf_file_path):
     if not pdf_file_path:
         st.session_state.clear()
@@ -83,7 +91,7 @@ def build_index(pdf_file_path):
     st.session_state.text += text
 
     chunk_size = 2048
-    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    chunks = [text[i: i + chunk_size] for i in range(0, len(text), chunk_size)]
 
     if len(chunks) > 500:
         st.error("Document is too long!")
@@ -106,23 +114,19 @@ def build_index(pdf_file_path):
         st.session_state.index = IndexFlatL2(dimension)
     st.session_state.index.add(embeddings)
 
+# Function to simulate streaming text character by character
 def stream_str(s, speed=250):
     for c in s:
         yield c
         time.sleep(1 / speed)
 
-def stream_response(response):
-    for r in response:
-        yield r.choices[0].delta.content
-
+# Cache the embedding function to reuse for queries
 @st.cache_data
 def embed(text: str):
-    return CLIENT.embeddings("mistral-embed", text).data[0].embedding
+    return CLIENT.embeddings.create(model="mistral-embed", inputs=[text]).data[0].embedding
 
+# Clear the conversation when the button is pressed
 if st.sidebar.button("🔴 Reset conversation"):
-    st.session_state.messages = []
-
-if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # Display chat messages with avatars
@@ -130,26 +134,28 @@ for message in st.session_state.messages:
     with st.chat_message(message["agent"], avatar=message.get("avatar")):
         st.write(message["content"])
 
-if not "text" in st.session_state:
-    # Adjusted initial message to be more generic and in bold
-    st.markdown("*How may I help you today?*", unsafe_allow_html=False)
-
-pdf_files_path = "database"
+# Initialize the PDF files
+pdf_files_path = r"D:\SchemeSmart-main\SchemeSmart-main\database"
 pdf_files = [os.path.join(pdf_files_path, f) for f in os.listdir(pdf_files_path) if f.endswith('.pdf')]
 
 if not pdf_files:
     st.stop()
 
+# Build the index for each PDF file
 for pdf_file_path in pdf_files:
     build_index(pdf_file_path)
 
+# Get the index from session state
 index: IndexFlatL2 = st.session_state.index
+
+# Input query from user
 query = st.chat_input("Ask something about your PDF")
 
+# Add an initial message if no conversation exists
 if not st.session_state.messages:
-    # Removed the automatic summary generation on startup
     add_message("How may I help you today?", agent="ai", avatar="logo2.png")
 
+# Process the query if one is given
 if query:
     add_message(query, agent="human", stream=False, store=True)
     reply(query, index)
