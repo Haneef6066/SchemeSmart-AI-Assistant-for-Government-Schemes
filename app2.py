@@ -38,7 +38,7 @@ def add_message(msg, agent="ai", stream=True, store=True, avatar=None):
 # Cache the client for reuse
 @st.cache_resource
 def get_client():
-    api_key = "pULoY3kPGs8W1MDG8nFPMLouXVl6vL2V"
+    api_key = "ENTER THE KEY"
     if not api_key:
         st.error("The MISTRAL_API_KEY is not set. Please set it in the code.")
         st.stop()
