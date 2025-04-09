@@ -135,7 +135,7 @@ for message in st.session_state.messages:
         st.write(message["content"])
 
 # Initialize the PDF files
-pdf_files_path = r"D:\SchemeSmart-main\SchemeSmart-main\database"
+pdf_files_path = "database/"
 pdf_files = [os.path.join(pdf_files_path, f) for f in os.listdir(pdf_files_path) if f.endswith('.pdf')]
 
 if not pdf_files:
